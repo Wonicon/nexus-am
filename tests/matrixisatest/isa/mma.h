@@ -18,28 +18,28 @@ static uint8_t cc[MM * NN] __attribute__((aligned(ALIGNMENT))) = { [0 ... MM * N
 
 static inline void mla8e(muint8_t *dst, const uint8_t *src, size_t n) {
     asm volatile (
-        "mlbe16.m tr0, (%0), %1"
+        "mlae8.m tr0, (%0), %1"
         :
         : "r"(src), "r"(n)
-        : "memory"
+        :
     );
 }
 
 static inline void mlb8e(muint8_t *dst, const uint8_t *src, size_t n) {
     asm volatile (
-        "mlbe16.m tr1, (%0), %1"
+        "mlbe8.m tr1, (%0), %1"
         :
         : "r"(src), "r"(n)
-        : "memory"
+        :
     );
 }
 
 static inline void mma() {
   asm volatile (
-    "mmau.h.mm acc0, tr0, tr1\n"
+    "mmau.mm acc0, tr0, tr1\n"
     : /* outputs */
     : /* inputs */
-    : "memory" /* clobber */
+    : /* clobber */
   );
 }
 
