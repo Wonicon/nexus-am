@@ -7,6 +7,12 @@
 #include "zmi2c.h"
 
 int main() {
+  asm volatile (
+    "lui a0, 0x2002\n"
+    "addiw a0, a0, 512\n"
+    "csrs mstatus, a0"::
+  );
+
   // test_load_store();
   // test_data_move();
   test_matmul();
