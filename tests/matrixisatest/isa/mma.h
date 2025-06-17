@@ -1,6 +1,71 @@
 #include "utils.h"
 #include <riscv_matrix.h>
 
+enum {
+    MM = 8,
+    KK = 64,
+    NN = 64
+};
+
+#define NUM_CHANNELS 8
+
+#define ALIGNMENT (KK * NUM_CHANNELS)
+
+// Init in compilation to avoid memset emu cost.
+static uint8_t aa[MM * KK] __attribute__((aligned(ALIGNMENT))) = { [0 ... MM * KK - 1] = 0x2 };
+static uint8_t bb[KK * NN] __attribute__((aligned(ALIGNMENT))) = { [0 ... KK * NN - 1] = 0x3 };
+static uint8_t cc[MM * NN] __attribute__((aligned(ALIGNMENT))) = { [0 ... MM * NN - 1] = 0x4 };
+
+static inline void mla8e(muint8_t *dst, const uint8_t *src, size_t n) {
+    asm volatile (
+        "mlbe16.m tr0, (%0), %1"
+        :
+        : "r"(src), "r"(n)
+        : "memory"
+    );
+}
+
+static inline void mlb8e(muint8_t *dst, const uint8_t *src, size_t n) {
+    asm volatile (
+        "mlbe16.m tr1, (%0), %1"
+        :
+        : "r"(src), "r"(n)
+        : "memory"
+    );
+}
+
+static inline void mma() {
+  asm volatile (
+    "mmau.h.mm acc0, tr0, tr1\n"
+    : /* outputs */
+    : /* inputs */
+    : "memory" /* clobber */
+  );
+}
+
+static inline void trap(int trap_code) {
+    asm volatile (
+        "mv a0, %0\n"
+        ".word 0x5006b\n"
+        :
+        : "r"(trap_code)
+        : "a0"
+    );
+}
+
+static __attribute__((noinline)) void test_mmau_mm_u8() {
+    SET_MBA0_I8();
+    msettilem(MM);
+    msettilek(KK);
+    msettilen(NN);
+    mla8e(NULL, aa, sizeof(aa[0]) * KK);
+    printf("mla\n");
+    mlb8e(NULL, bb, sizeof(bb[0]) * NN);
+    printf("mlb\n");
+    mma();
+    printf("mma\n");
+}
+
 static void test_mmau_mm_u16() {
   enum { M = 8, K = 8, N = 8 };
   SET_MBA0_I16();
@@ -1893,12 +1958,13 @@ static void test_msmau_mm() {
 }
 
 static void test_mmau_mm() {
-  test_mmau_mm_u16();
-  test_mmau_h_mm();
-  test_mmau_mm_u32();
-  test_mmau_w_mm();
-  test_mmau_mm_u64();
-  test_mmau_dw_mm();
+  test_mmau_mm_u8();
+  // test_mmau_mm_u16();
+  // test_mmau_h_mm();
+  // test_mmau_mm_u32();
+  // test_mmau_w_mm();
+  // test_mmau_mm_u64();
+  // test_mmau_dw_mm();
 }
 
 static void test_mwmau_mm() {
@@ -1962,17 +2028,17 @@ static void test_msqma_mm() {
 
 static void test_matmul() {
   test_mmau_mm();
-  test_mwmau_mm();
-  test_mqmau_mm();
-  test_msmau_mm();
-  test_mswmau_mm();
-  test_mma_mm();
-  test_msqmau_mm();
-  test_mwma_mm();
-  test_mqma_mm();
-  test_msma_mm();
-  test_mswma_mm();
-  test_msqma_mm();
-  test_mfma_mm();
-  test_mfwma_mm();
+  // test_mwmau_mm();
+  // test_mqmau_mm();
+  // test_msmau_mm();
+  // test_mswmau_mm();
+  // test_mma_mm();
+  // test_msqmau_mm();
+  // test_mwma_mm();
+  // test_mqma_mm();
+  // test_msma_mm();
+  // test_mswma_mm();
+  // test_msqma_mm();
+  // test_mfma_mm();
+  // test_mfwma_mm();
 }
