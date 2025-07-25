@@ -20,13 +20,18 @@ enum {
 #define CHECK_SRC 0x7
 #define CHECK_SINK 0x8
 
+#define A_STRIDE 576
+#define B_STRIDE 64
+#define C_STRIDE 640
+
 // C stride
 #define STRIDE 640
 
 // Init in compilation to avoid memset emu cost.
-static uint8_t aa[MM * KK] __attribute__((aligned(ALIGNMENT))) = { [0 ... MM * KK - 1] = 0x2 };
-static uint8_t bb[KK * NN] __attribute__((aligned(ALIGNMENT))) = { [0 ... KK * NN - 1] = 0x3 };
-static uint8_t cc[MM * NN] __attribute__((aligned(ALIGNMENT))) = { [0 ... MM * NN - 1] = 0x4 };
+static uint8_t aa[MM * A_STRIDE] __attribute__((aligned(ALIGNMENT))) = { [0 ... MM * A_STRIDE - 1] = 0x2 };
+static uint8_t bb[KK * B_STRIDE] __attribute__((aligned(ALIGNMENT))) = { [0 ... KK * B_STRIDE - 1] = 0x3 };
+static uint32_t cc[MM * C_STRIDE / 4] __attribute__((aligned(ALIGNMENT))) = { [0 ... (MM * C_STRIDE / 4) - 1] = 0x4 };
+static uint8_t dd[MM * C_STRIDE] __attribute__((aligned(ALIGNMENT))) = { [0 ... MM * C_STRIDE - 1] = 0x5 };
 
 #define MNAME cc2
 #include "mdata_cc.h"
@@ -93,6 +98,50 @@ static inline void trap(int trap_code) {
 
 static __attribute__((noinline)) void test_mmau_mm_u8() {
     SET_MBA0_I8();
+    msettilem(MM);
+    msettilek(KK);
+    msettilen(NN);
+    printf("set\n");
+
+    for (int i = 0; i < 1; i++) {
+        mla8e(NULL, aa, A_STRIDE);
+        mlb8e(NULL, bb, B_STRIDE);
+        mlc32e(NULL, dd, C_STRIDE);
+        mlc32e(NULL, cc, C_STRIDE);
+        mma();
+        msc32e(NULL, dd, C_STRIDE);
+        printf(".\n");
+    }
+
+    // TODO: Ensure matrix finish
+    for (int i = 0; i < 4; i++) {
+        printf("wait matrix to finish: %d\n", i);
+    }
+
+    int index = 0;
+    while (index != MM * C_STRIDE) {
+        if (index % C_STRIDE == 0) {
+            // printf("%08p: ", &out[index]);
+        }
+
+        int row = index / STRIDE;
+        int col = index % STRIDE;
+        if (col >= NN * sizeof(uint32_t)) {
+            index += (STRIDE - col);
+            assert(index % STRIDE == 0);
+            _putc('\n');
+            continue;
+        }
+
+        uint32_t *row_dd = (uint32_t *)&dd[row * C_STRIDE];
+        uint32_t curr  = row_dd[col / sizeof(uint32_t)];
+        printf("[%02d,%02d]: %08x\n", row, col / sizeof(uint32_t), curr);
+
+        index += sizeof(uint32_t);
+    }
+}
+
+static __attribute__((noinline)) void test_mload_mstore_32() {
     SET_MBA0_I8();
     msettilem(MM);
     msettilek(KK);
