@@ -1,20 +1,40 @@
 #include "utils.h"
 #include <riscv_matrix.h>
+#include <am.h>
 
 enum {
-    MM = 8,
-    KK = 64,
+    MM = 64,
+    KK = 256,
     NN = 64
 };
 
+#define M MM
+#define N NN
+#define K KK
+
 #define NUM_CHANNELS 8
 
-#define ALIGNMENT (KK * NUM_CHANNELS)
+#define ALIGNMENT (NUM_CHANNELS * 64)
+
+#define CHECK_DEFAULT 0x6
+#define CHECK_SRC 0x7
+#define CHECK_SINK 0x8
+
+// C stride
+#define STRIDE 640
 
 // Init in compilation to avoid memset emu cost.
 static uint8_t aa[MM * KK] __attribute__((aligned(ALIGNMENT))) = { [0 ... MM * KK - 1] = 0x2 };
 static uint8_t bb[KK * NN] __attribute__((aligned(ALIGNMENT))) = { [0 ... KK * NN - 1] = 0x3 };
 static uint8_t cc[MM * NN] __attribute__((aligned(ALIGNMENT))) = { [0 ... MM * NN - 1] = 0x4 };
+
+#define MNAME cc2
+#include "mdata_cc.h"
+#undef MNAME
+
+#define MNAME out
+#include "mdata_out.h"
+#undef MNAME
 
 static inline void mla8e(muint8_t *dst, const uint8_t *src, size_t n) {
     asm volatile (
@@ -28,6 +48,24 @@ static inline void mla8e(muint8_t *dst, const uint8_t *src, size_t n) {
 static inline void mlb8e(muint8_t *dst, const uint8_t *src, size_t n) {
     asm volatile (
         "mlbe8.m tr1, (%0), %1"
+        :
+        : "r"(src), "r"(n)
+        :
+    );
+}
+
+static inline void mlc32e(muint8_t *dst, const uint32_t *src, size_t n) {
+    asm volatile (
+        "mlce32.m acc0, (%0), %1"
+        :
+        : "r"(src), "r"(n)
+        :
+    );
+}
+
+static inline void msc32e(muint8_t *dst, const uint32_t *src, size_t n) {
+    asm volatile (
+        "msce32.m acc0, (%0), %1"
         :
         : "r"(src), "r"(n)
         :
@@ -55,15 +93,62 @@ static inline void trap(int trap_code) {
 
 static __attribute__((noinline)) void test_mmau_mm_u8() {
     SET_MBA0_I8();
+    SET_MBA0_I8();
     msettilem(MM);
     msettilek(KK);
     msettilen(NN);
-    mla8e(NULL, aa, sizeof(aa[0]) * KK);
-    printf("mla\n");
-    mlb8e(NULL, bb, sizeof(bb[0]) * NN);
-    printf("mlb\n");
-    mma();
-    printf("mma\n");
+    printf("set\n");
+
+    for (int i = 0; i < 1; i++) {
+        //mla8e(NULL, aa, sizeof(aa[0]) * KK);
+        //mlb8e(NULL, bb, sizeof(bb[0]) * NN);
+#ifdef TRAP_START
+        trap(0);
+#endif
+
+        mlc32e(NULL, out, STRIDE);
+        printf("mlc out\n");
+        mlc32e(NULL, cc, STRIDE);
+        printf("mlc cc\n");
+        //mma();
+        msc32e(NULL, out, STRIDE);
+        printf("msc out\n");
+        printf(".\n");
+    }
+
+    // Ensure matrix finish
+#ifdef TRAP_END
+    trap(0);
+#endif
+
+    int index = 0;
+    printf("Only print unmatched data and position.\n");
+    while (index != MM * STRIDE) {
+        if (index % STRIDE == 0) {
+            // printf("%08p: ", &out[index]);
+        }
+
+        int row = index / STRIDE;
+        int col = index % STRIDE;
+        if (col >= NN * sizeof(uint32_t)) {
+            index += (STRIDE - col);
+            assert(index % STRIDE == 0);
+            //_putc('\n');
+            continue;
+        }
+
+        uint32_t *row_cc = (uint32_t *)&cc[row * STRIDE];
+        uint32_t *row_out = (uint32_t *)&out[row * STRIDE];
+        uint32_t curr  = row_out[col / sizeof(uint32_t)];
+        if (curr != row_cc[col / sizeof(uint32_t)]) {
+            printf("[%02d,%02d]: %08x\n", row, col / sizeof(uint32_t), curr);
+            //_putc('?');
+        }
+
+        index += sizeof(uint32_t);
+    }
+
+    printf("ml -> ms pass");
 }
 
 static void test_mmau_mm_u16() {
